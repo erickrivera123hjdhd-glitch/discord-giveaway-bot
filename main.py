@@ -1,7 +1,7 @@
 import os
 import asyncio
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from cogs.giveaway import GiveawayCog, GiveawayEntryView
 from database import Database
 
@@ -18,7 +18,6 @@ bot.db = db
 async def setup_hook():
     await db.init_db()
     await bot.add_cog(GiveawayCog(bot))
-    # Register the persistent giveaway button so it still works after restarts.
     bot.add_view(GiveawayEntryView(bot))
     synced = await bot.tree.sync()
     print(f"Synced {len(synced)} slash command(s)")
@@ -27,11 +26,25 @@ async def setup_hook():
 bot.setup_hook = setup_hook
 
 
+@tasks.loop(seconds=10)
+async def giveaway_poller():
+    try:
+        await db.check_expired_giveaways(bot)
+    except Exception as exc:
+        print(f"Giveaway polling error: {exc}")
+
+
+@giveaway_poller.before_loop
+async def before_giveaway_poller():
+    await bot.wait_until_ready()
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    await db.check_expired_giveaways(bot)
-    print("Bot is ready!")
+    if not giveaway_poller.is_running():
+        giveaway_poller.start()
+    print("Bot is ready! Giveaway polling every 10 seconds.")
 
 
 @bot.event
@@ -52,6 +65,8 @@ async def main():
     try:
         await bot.start(token)
     finally:
+        if giveaway_poller.is_running():
+            giveaway_poller.cancel()
         await db.close()
 
 

@@ -164,6 +164,16 @@ class Database:
 
             await message.edit(content=None, embed=embed, view=None)
 
+            # Send a fresh winner announcement message so Discord sends a new notification/ping.
+            try:
+                await channel.send(
+                    content=f"🎉 **GIVEAWAY WINNER{'S' if len(winners) != 1 else ''}!** {mentions}\n"
+                            f"Congratulations! You won **{giveaway['prize']}**!",
+                    allowed_mentions=discord.AllowedMentions(users=True),
+                )
+            except discord.HTTPException as exc:
+                print(f"Could not send winner announcement for giveaway {giveaway['id']}: {exc}")
+
             for winner_id in winners:
                 try:
                     user = await bot.fetch_user(int(winner_id))

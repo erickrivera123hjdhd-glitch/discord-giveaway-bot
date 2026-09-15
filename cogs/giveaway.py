@@ -134,6 +134,7 @@ class GiveawayCreateModal(Modal, title="Create Giveaway"):
                 prize, duration_seconds, winners,
                 required_role.id if required_role else None,
                 min_age,
+                self.bot,
             )
 
             message = await interaction.channel.send(embed=embed, view=view)
@@ -150,8 +151,6 @@ class GiveawayCreateModal(Modal, title="Create Giveaway"):
             )
 
             view.giveaway_id = giveaway_id
-            view.bot = self.bot
-            view.db = self.bot.db
             await interaction.response.send_message("✅ Giveaway created!", ephemeral=True)
 
         except ValueError as exc:
@@ -213,7 +212,7 @@ def format_duration(seconds):
     return " ".join(parts) or "0s"
 
 
-def create_giveaway_embed(prize, duration_seconds, winners, required_role_id, min_account_age):
+def create_giveaway_embed(prize, duration_seconds, winners, required_role_id, min_account_age, bot):
     ends_at = datetime.now() + timedelta(seconds=duration_seconds)
     embed = discord.Embed(title="🎁 GIVEAWAY", color=0xFF6B6B, timestamp=datetime.now())
     embed.add_field(name="Prize", value=prize, inline=False)
@@ -232,20 +231,41 @@ def create_giveaway_embed(prize, duration_seconds, winners, required_role_id, mi
     )
     embed.set_footer(text=f"Ends: {ends_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    view = GiveawayEntryView()
+    view = GiveawayEntryView(bot)
     return embed, view
 
 
 class GiveawayEntryView(View):
-    def __init__(self):
+    def __init__(self, bot=None):
         super().__init__(timeout=None)
         self.giveaway_id = None
-        self.bot = None
-        self.db = None
+        self.bot = bot
+        self.db = bot.db if bot else None
 
-    @discord.ui.button(label="Enter Giveaway", style=discord.ButtonStyle.success, emoji="🎉")
+    @discord.ui.button(
+        label="Enter Giveaway",
+        style=discord.ButtonStyle.success,
+        emoji="🎉",
+        custom_id="giveaway:enter",
+    )
     async def enter_button(self, interaction: discord.Interaction, button: Button):
-        if not self.giveaway_id or not self.bot or not self.db:
+        # Persistent views are restored after a restart without the original
+        # giveaway_id, so identify the giveaway from the Discord message ID.
+        if not self.bot:
+            await interaction.response.send_message("Giveaway system is not ready.", ephemeral=True)
+            return
+
+        self.db = self.bot.db
+
+        if not self.giveaway_id:
+            giveaway = await self.db.get_giveaway_by_message(
+                interaction.message.id,
+                interaction.channel_id,
+            )
+            if giveaway:
+                self.giveaway_id = giveaway["id"]
+
+        if not self.giveaway_id:
             await interaction.response.send_message("Giveaway data not found.", ephemeral=True)
             return
 

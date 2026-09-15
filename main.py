@@ -18,7 +18,8 @@ bot.db = db
 async def setup_hook():
     await db.init_db()
     await bot.add_cog(GiveawayCog(bot))
-    bot.add_view(GiveawayEntryView())
+    # Register the persistent giveaway button so it still works after restarts.
+    bot.add_view(GiveawayEntryView(bot))
     synced = await bot.tree.sync()
     print(f"Synced {len(synced)} slash command(s)")
 

@@ -1,7 +1,8 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
-from cogs.giveaway import GiveawayCog
+from cogs.giveaway import GiveawayCog, GiveawayEntryView
 from database import Database
 
 
@@ -14,9 +15,21 @@ db = Database()
 bot.db = db
 
 
+async def setup_hook():
+    await db.init_db()
+    await bot.add_cog(GiveawayCog(bot))
+    bot.add_view(GiveawayEntryView())
+    synced = await bot.tree.sync()
+    print(f"Synced {len(synced)} slash command(s)")
+
+
+bot.setup_hook = setup_hook
+
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    await db.check_expired_giveaways(bot)
     print("Bot is ready!")
 
 
@@ -30,20 +43,11 @@ async def on_resumed():
     print("Bot connection resumed")
 
 
-async def setup_bot():
-    await db.init_db()
-    await bot.add_cog(GiveawayCog(bot))
-    synced = await bot.tree.sync()
-    print(f"Synced {len(synced)} slash command(s)")
-    await db.check_expired_giveaways(bot)
-
-
 async def main():
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise RuntimeError("BOT_TOKEN environment variable is missing")
 
-    await setup_bot()
     try:
         await bot.start(token)
     finally:
@@ -51,5 +55,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
